@@ -10,5 +10,8 @@ export default async function Dashboard() {
     redirect('/')
   }
 
-  return <ClientDashboard userEmail={user.email!} userId={user.id} />
+  // Get user's full name from metadata, fallback to email
+  const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+
+  return <ClientDashboard userEmail={user.email!} userName={userName} userId={user.id} />
 }
