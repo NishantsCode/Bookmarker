@@ -16,27 +16,14 @@ export default function LoginPage() {
         {/* Animated Title */}
         <div className="text-center mb-8">
           <h1 
-            className="text-5xl md:text-6xl font-bold text-white mb-6 flex justify-center gap-1 flex-wrap"
+            className="text-5xl md:text-6xl font-bold text-white mb-6"
             style={{ 
               letterSpacing: '0.125rem',
               position: 'relative',
               WebkitBoxReflect: 'below -20px linear-gradient(transparent, rgba(0, 0, 0, 0.103))'
             }}
           >
-            {'BOOKMARKER'.split('').map((letter, i) => (
-              <span
-                key={i}
-                className="inline-block"
-                style={{
-                  position: 'relative',
-                  display: 'inline-block',
-                  animation: 'waviy 1s infinite',
-                  animationDelay: `${i * 0.1}s`
-                }}
-              >
-                {letter}
-              </span>
-            ))}
+            BOOKMARKER
           </h1>
           <p className="text-lg text-white flex items-center justify-center gap-2" style={{ letterSpacing: '0.125rem' }}>
             Your personal bookmark vault
@@ -103,21 +90,6 @@ export default function LoginPage() {
       </div>
 
       <style jsx>{`
-        @keyframes waviy {
-          0% {
-            transform: translateY(0);
-          }
-          25% {
-            transform: translateY(-15px);
-          }
-          50% {
-            transform: translateY(0);
-          }
-          100% {
-            transform: translateY(0);
-          }
-        }
-        
         @keyframes fadeInUp {
           from {
             opacity: 0;
