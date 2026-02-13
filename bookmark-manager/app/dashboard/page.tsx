@@ -13,5 +13,5 @@ export default async function Dashboard() {
   // Get user's full name from metadata, fallback to email
   const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User'
 
-  return <ClientDashboard userEmail={user.email!} userName={userName} userId={user.id} />
+  return <ClientDashboard userName={userName} />
 }
