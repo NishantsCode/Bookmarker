@@ -358,11 +358,17 @@ export default function ClientDashboard({ userName }: { userName: string }) {
 
       <style jsx>{`
         @keyframes waviy {
-          0%, 40%, 100% {
+          0% {
             transform: translateY(0);
           }
-          20% {
+          25% {
             transform: translateY(-15px);
+          }
+          50% {
+            transform: translateY(0);
+          }
+          100% {
+            transform: translateY(0);
           }
         }
       `}</style>

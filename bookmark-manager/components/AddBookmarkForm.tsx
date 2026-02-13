@@ -51,10 +51,7 @@ export default function AddBookmarkForm({ onBookmarkAdded }: { onBookmarkAdded?:
   return (
     <form onSubmit={handleSubmit} className="flex flex-col items-center gap-3 w-full">
       <div className="w-full">
-        <label className="flex items-center gap-2 text-white mb-2 font-medium" style={{ fontSize: '1.0625rem', letterSpacing: '0.125rem' }}>
-          <svg className="w-5 h-5 text-pink-300" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd"/>
-          </svg>
+        <label className="text-white mb-2 font-medium block" style={{ fontSize: '1.0625rem', letterSpacing: '0.125rem' }}>
           Name
         </label>
         <input
