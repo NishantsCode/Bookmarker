@@ -19,10 +19,34 @@ export default function ClientDashboard({ userName }: { userName: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editUrl, setEditUrl] = useState('')
+  const [isDarkTheme, setIsDarkTheme] = useState(false)
+
+  // Listen for theme changes
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme')
+    setIsDarkTheme(savedTheme === 'dark')
+
+    const handleThemeChange = (e: CustomEvent) => {
+      setIsDarkTheme(e.detail.isDark)
+    }
+
+    window.addEventListener('themeChange', handleThemeChange as EventListener)
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener)
+    }
+  }, [])
 
   useEffect(() => {
+    const supabase = createClient()
+
     const fetchBookmarks = async () => {
-      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
       const { data } = await supabase
         .from('bookmarks')
         .select('*')
@@ -32,17 +56,71 @@ export default function ClientDashboard({ userName }: { userName: string }) {
         setBookmarks(data)
       }
       setLoading(false)
+
+      // Subscribe to real-time changes
+      const channel = supabase
+        .channel('bookmarks-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'bookmarks',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            setBookmarks(prev => {
+              // Prevent duplicates
+              const exists = prev.some(b => b.id === payload.new.id)
+              if (exists) return prev
+              return [payload.new as Bookmark, ...prev]
+            })
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'bookmarks'
+          },
+          (payload) => {
+            setBookmarks(prev => prev.filter(b => b.id !== payload.old.id))
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'bookmarks',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            setBookmarks(prev => prev.map(b => 
+              b.id === payload.new.id ? payload.new as Bookmark : b
+            ))
+          }
+        )
+        .subscribe()
+
+      // Cleanup subscription on unmount
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     fetchBookmarks()
   }, [])
 
-  const handleBookmarkAdded = useCallback((newBookmark: Bookmark) => {
-    setBookmarks(prev => [newBookmark, ...prev])
+  const handleBookmarkAdded = useCallback(() => {
+    // Realtime subscription will handle the update automatically
+    // No need for manual state update
   }, [])
 
-  const handleBookmarkDeleted = useCallback((id: string) => {
-    setBookmarks(prev => prev.filter(b => b.id !== id))
+  const handleBookmarkDeleted = useCallback(() => {
+    // Realtime subscription will handle the update automatically
+    // No need for manual state update
   }, [])
 
   const startEditing = useCallback((bookmark: Bookmark) => {
@@ -65,9 +143,7 @@ export default function ClientDashboard({ userName }: { userName: string }) {
       .eq('id', id)
 
     if (!error) {
-      setBookmarks(prev => prev.map(b => 
-        b.id === id ? { ...b, title: editTitle, url: editUrl } : b
-      ))
+      // Realtime subscription will handle the update automatically
       cancelEditing()
     }
   }, [editTitle, editUrl, cancelEditing])
@@ -76,26 +152,31 @@ export default function ClientDashboard({ userName }: { userName: string }) {
     <div 
       className="min-h-screen"
       style={{
-        backgroundImage: 'linear-gradient(rgba(91, 64, 140, 0.454), rgba(91, 64, 140, 0.653)), url(/background.jpg)',
-        backgroundSize: 'cover',
-        backgroundPositionY: 'center',
-        color: '#fff',
+        background: isDarkTheme 
+          ? 'linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%)'
+          : 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+        color: isDarkTheme ? '#fff' : '#1a202c',
         fontFamily: 'system-ui, -apple-system, sans-serif',
         fontWeight: 500,
         fontSize: '1.0625rem',
-        letterSpacing: '0.125rem'
+        letterSpacing: '0.125rem',
+        transition: 'background 0.3s ease, color 0.3s ease'
       }}
     >
       {/* Navbar */}
-      <Navbar userName={userName} />
+      <div style={{ position: 'relative', zIndex: 50 }}>
+        <Navbar userName={userName} />
+      </div>
 
       {/* Main Content */}
-      <main className="py-8">
+      <main className="py-8" style={{ position: 'relative', zIndex: 10 }}>
         <section className="max-w-4xl mx-auto p-3 sm:p-5">
           {/* Animated Title */}
-          <div className="flex flex-col gap-8 justify-center items-center text-center mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-widest flex justify-center gap-1 flex-wrap" style={{ 
+          <div className="flex flex-col gap-8 justify-center items-center text-center mb-8" style={{ position: 'relative', zIndex: 20 }}>
+            <h1 className="text-4xl md:text-5xl font-bold tracking-widest flex justify-center gap-1 flex-wrap" style={{ 
               position: 'relative',
+              zIndex: 20,
+              color: isDarkTheme ? '#fff' : '#1a202c',
               WebkitBoxReflect: 'below -15px linear-gradient(transparent, rgba(0, 0, 0, 0.103))'
             }}>
               {'BOOKMARKER'.split('').map((letter, i) => (
@@ -113,7 +194,7 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                 </span>
               ))}
             </h1>
-            <h2 className="text-lg flex items-center justify-center gap-2">
+            <h2 className="text-lg flex items-center justify-center gap-2" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>
               Bookmark your favorite sites
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 512 512" style={{ fontSize: '1.125rem' }}>
                 <path d="M462.3 62.6C407.5 15.9 326 24.3 275.7 76.2L256 96.5l-19.7-20.3C186.1 24.3 104.5 15.9 49.7 62.6c-62.8 53.6-66.1 149.8-9.9 207.9l193.5 199.8c12.5 12.9 32.8 12.9 45.3 0l193.5-199.8c56.3-58.1 53-154.3-9.8-207.9z"/>
@@ -122,34 +203,38 @@ export default function ClientDashboard({ userName }: { userName: string }) {
           </div>
 
           {/* Add Bookmark Form */}
-          <div className="mt-3 flex flex-col items-center justify-center">
-            <AddBookmarkForm onBookmarkAdded={handleBookmarkAdded} />
+          <div className="mt-3 flex flex-col items-center justify-center" style={{ position: 'relative', zIndex: 20 }}>
+            <AddBookmarkForm onBookmarkAdded={handleBookmarkAdded} isDarkTheme={isDarkTheme} />
           </div>
         </section>
 
         {/* Bookmarks Table */}
-        <section className="max-w-4xl mx-auto pt-6 px-3 sm:px-5">
+        <section className="max-w-4xl mx-auto pt-6 px-3 sm:px-5" style={{ position: 'relative', zIndex: 20 }}>
           {loading ? (
             <div 
               className="rounded-xl shadow-2xl p-8"
               style={{ 
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                position: 'relative',
+                zIndex: 20,
+                backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.9)',
                 backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
+                border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)'
               }}
             >
-              <p className="text-white text-center">Loading bookmarks...</p>
+              <p className="text-center" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Loading bookmarks...</p>
             </div>
           ) : bookmarks.length === 0 ? (
             <div 
               className="rounded-xl shadow-2xl p-8"
               style={{ 
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                position: 'relative',
+                zIndex: 20,
+                backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.9)',
                 backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
+                border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)'
               }}
             >
-              <p className="text-white text-center">No bookmarks yet. Add your first one above!</p>
+              <p className="text-center" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>No bookmarks yet. Add your first one above!</p>
             </div>
           ) : (
             <>
@@ -157,22 +242,24 @@ export default function ClientDashboard({ userName }: { userName: string }) {
               <div 
                 className="hidden md:block rounded-xl shadow-2xl overflow-hidden"
                 style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                  position: 'relative',
+                  zIndex: 20,
+                  backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.95)',
                   backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                  border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)'
                 }}
               >
-                <table className="w-full text-center" style={{ fontSize: '1rem' }}>
+                <table className="w-full text-center" style={{ fontSize: '1rem', position: 'relative', zIndex: 20 }}>
                   <thead>
                     <tr style={{ 
-                      backgroundColor: 'rgba(109, 66, 182, 0.3)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.2)'
+                      backgroundColor: isDarkTheme ? 'rgba(109, 66, 182, 0.3)' : 'rgba(109, 66, 182, 0.15)',
+                      borderBottom: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)'
                     }}>
-                      <th className="p-4 font-bold text-white">Index</th>
-                      <th className="p-4 font-bold text-white">Website Name</th>
-                      <th className="p-4 font-bold text-white">Visit</th>
-                      <th className="p-4 font-bold text-white">Edit</th>
-                      <th className="p-4 font-bold text-white">Delete</th>
+                      <th className="p-4 font-bold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Index</th>
+                      <th className="p-4 font-bold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Website Name</th>
+                      <th className="p-4 font-bold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Visit</th>
+                      <th className="p-4 font-bold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Edit</th>
+                      <th className="p-4 font-bold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>Delete</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -182,17 +269,26 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                         key={bookmark.id} 
                         className="transition"
                         style={{ 
-                          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+                          borderBottom: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                          backgroundColor: editingId === bookmark.id 
+                            ? (isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)')
+                            : 'transparent'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+                          if (editingId !== bookmark.id) {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(109, 66, 182, 0.05)'
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent'
+                          if (editingId !== bookmark.id) {
+                            e.currentTarget.style.backgroundColor = 'transparent'
+                          } else {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+                          }
                         }}
                       >
-                        <td className="p-4 text-white font-semibold">{index + 1}</td>
-                        <td className="p-4 text-white font-medium">
+                        <td className="p-4 font-semibold" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>{index + 1}</td>
+                        <td className="p-4 font-medium" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>
                           {editingId === bookmark.id ? (
                             <div className="flex flex-col gap-2">
                               <input
@@ -201,6 +297,8 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                                 onChange={(e) => setEditTitle(e.target.value)}
                                 className="px-3 py-1.5 rounded-lg text-sm"
                                 style={{
+                                  position: 'relative',
+                                  zIndex: 30,
                                   backgroundColor: 'rgba(255, 255, 255, 0.9)',
                                   color: 'rgba(88, 63, 128, 0.9)',
                                   border: '1px solid rgba(255, 255, 255, 0.3)'
@@ -213,6 +311,8 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                                 onChange={(e) => setEditUrl(e.target.value)}
                                 className="px-3 py-1.5 rounded-lg text-sm"
                                 style={{
+                                  position: 'relative',
+                                  zIndex: 30,
                                   backgroundColor: 'rgba(255, 255, 255, 0.9)',
                                   color: 'rgba(88, 63, 128, 0.9)',
                                   border: '1px solid rgba(255, 255, 255, 0.3)'
@@ -224,24 +324,26 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                             bookmark.title
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" style={{ position: 'relative', zIndex: 20 }}>
                           <a
                             href={bookmark.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition text-sm font-medium"
                             style={{ 
-                              color: '#fff',
-                              borderColor: 'rgba(255, 255, 255, 0.5)',
-                              backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                              position: 'relative',
+                              zIndex: 30,
+                              color: isDarkTheme ? '#fff' : '#2d3748',
+                              borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(109, 66, 182, 0.5)',
+                              backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(109, 66, 182, 0.1)'
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.25)'
-                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.8)'
+                              e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.25)' : 'rgba(109, 66, 182, 0.25)'
+                              e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.8)' : 'rgba(109, 66, 182, 0.8)'
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)'
+                              e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(109, 66, 182, 0.1)'
+                              e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(109, 66, 182, 0.5)'
                             }}
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 576 512">
@@ -250,24 +352,26 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                             Visit
                           </a>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" style={{ position: 'relative', zIndex: 20 }}>
                           {editingId === bookmark.id ? (
                             <div className="flex gap-2 justify-center">
                               <button
                                 onClick={() => saveEdit(bookmark.id)}
                                 className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                                 style={{ 
-                                  color: '#fff',
-                                  borderColor: 'rgba(255, 255, 255, 0.5)',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                                  position: 'relative',
+                                  zIndex: 30,
+                                  color: isDarkTheme ? '#fff' : '#2d3748',
+                                  borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(34, 197, 94, 0.5)',
+                                  backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(34, 197, 94, 0.1)'
                                 }}
                                 onMouseEnter={(e) => {
                                   e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.3)'
                                   e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.8)'
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)'
+                                  e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(34, 197, 94, 0.1)'
+                                  e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(34, 197, 94, 0.5)'
                                 }}
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 448 512">
@@ -279,17 +383,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                                 onClick={cancelEditing}
                                 className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                                 style={{ 
-                                  color: '#fff',
-                                  borderColor: 'rgba(255, 255, 255, 0.5)',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                                  position: 'relative',
+                                  zIndex: 30,
+                                  color: isDarkTheme ? '#fff' : '#2d3748',
+                                  borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(156, 163, 175, 0.5)',
+                                  backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(156, 163, 175, 0.1)'
                                 }}
                                 onMouseEnter={(e) => {
                                   e.currentTarget.style.backgroundColor = 'rgba(156, 163, 175, 0.3)'
                                   e.currentTarget.style.borderColor = 'rgba(156, 163, 175, 0.8)'
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)'
+                                  e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(156, 163, 175, 0.1)'
+                                  e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(156, 163, 175, 0.5)'
                                 }}
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 384 512">
@@ -303,17 +409,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                               onClick={() => startEditing(bookmark)}
                               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition text-sm font-medium"
                               style={{ 
-                                color: '#fff',
-                                borderColor: 'rgba(255, 255, 255, 0.5)',
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                                position: 'relative',
+                                zIndex: 30,
+                                color: isDarkTheme ? '#fff' : '#2d3748',
+                                borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(59, 130, 246, 0.5)',
+                                backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(59, 130, 246, 0.1)'
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.3)'
                                 e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.8)'
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)'
+                                e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(59, 130, 246, 0.1)'
+                                e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(59, 130, 246, 0.5)'
                               }}
                             >
                               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 512 512">
@@ -323,28 +431,28 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                             </button>
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" style={{ position: 'relative', zIndex: 20 }}>
                           <button
                             onClick={async () => {
                               const supabase = createClient()
-                              const { error } = await supabase.from('bookmarks').delete().eq('id', bookmark.id)
-                              if (!error) {
-                                handleBookmarkDeleted(bookmark.id)
-                              }
+                              await supabase.from('bookmarks').delete().eq('id', bookmark.id)
+                              // Realtime subscription will handle the UI update
                             }}
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition text-sm font-medium"
                             style={{ 
-                              color: '#fff',
-                              borderColor: 'rgba(255, 255, 255, 0.5)',
-                              backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                              position: 'relative',
+                              zIndex: 30,
+                              color: isDarkTheme ? '#fff' : '#2d3748',
+                              borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+                              backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.1)'
                             }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'
                               e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.8)'
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)'
+                              e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+                              e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(239, 68, 68, 0.5)'
                             }}
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 448 512">
@@ -367,15 +475,21 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                   key={bookmark.id}
                   className="rounded-xl shadow-2xl p-4"
                   style={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                    position: 'relative',
+                    zIndex: 20,
+                    backgroundColor: editingId === bookmark.id
+                      ? (isDarkTheme ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.2)')
+                      : (isDarkTheme ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.95)'),
                     backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                    border: editingId === bookmark.id
+                      ? (isDarkTheme ? '2px solid rgba(59, 130, 246, 0.5)' : '2px solid rgba(59, 130, 246, 0.6)')
+                      : (isDarkTheme ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)')
                   }}
                 >
                   {editingId === bookmark.id ? (
                     <div className="mb-4">
                       <div className="flex items-start gap-3 mb-3">
-                        <span className="text-white font-bold text-lg flex-shrink-0">{index + 1}</span>
+                        <span className="font-bold text-lg flex-shrink-0" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>{index + 1}</span>
                         <div className="flex-1 space-y-3">
                           <input
                             type="text"
@@ -383,6 +497,8 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                             onChange={(e) => setEditTitle(e.target.value)}
                             className="w-full px-3 py-2 rounded-lg text-sm"
                             style={{
+                              position: 'relative',
+                              zIndex: 30,
                               backgroundColor: 'rgba(255, 255, 255, 0.9)',
                               color: 'rgba(88, 63, 128, 0.9)',
                               border: '1px solid rgba(255, 255, 255, 0.3)'
@@ -395,6 +511,8 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                             onChange={(e) => setEditUrl(e.target.value)}
                             className="w-full px-3 py-2 rounded-lg text-sm"
                             style={{
+                              position: 'relative',
+                              zIndex: 30,
                               backgroundColor: 'rgba(255, 255, 255, 0.9)',
                               color: 'rgba(88, 63, 128, 0.9)',
                               border: '1px solid rgba(255, 255, 255, 0.3)'
@@ -406,10 +524,10 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                     </div>
                   ) : (
                     <div className="flex items-start gap-3 mb-4">
-                      <span className="text-white font-bold text-lg flex-shrink-0">{index + 1}</span>
+                      <span className="font-bold text-lg flex-shrink-0" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>{index + 1}</span>
                       <div className="flex-1">
-                        <h3 className="text-white font-semibold text-lg mb-1">{bookmark.title}</h3>
-                        <p className="text-white/70 text-sm break-all">{bookmark.url}</p>
+                        <h3 className="font-semibold text-lg mb-1" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? '#fff' : '#2d3748' }}>{bookmark.title}</h3>
+                        <p className="text-sm break-all" style={{ position: 'relative', zIndex: 20, color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(45, 55, 72, 0.7)' }}>{bookmark.url}</p>
                       </div>
                     </div>
                   )}
@@ -421,9 +539,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                           onClick={() => saveEdit(bookmark.id)}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                           style={{ 
-                            color: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.5)',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                            position: 'relative',
+                            zIndex: 30,
+                            color: isDarkTheme ? '#fff' : '#2d3748',
+                            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(34, 197, 94, 0.5)',
+                            backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(34, 197, 94, 0.1)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.3)'
+                            e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.8)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(34, 197, 94, 0.1)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(34, 197, 94, 0.5)'
                           }}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 448 512">
@@ -435,9 +563,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                           onClick={cancelEditing}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                           style={{ 
-                            color: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.5)',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                            position: 'relative',
+                            zIndex: 30,
+                            color: isDarkTheme ? '#fff' : '#2d3748',
+                            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(156, 163, 175, 0.5)',
+                            backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(156, 163, 175, 0.1)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(156, 163, 175, 0.3)'
+                            e.currentTarget.style.borderColor = 'rgba(156, 163, 175, 0.8)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(156, 163, 175, 0.1)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(156, 163, 175, 0.5)'
                           }}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 384 512">
@@ -454,9 +592,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                           rel="noopener noreferrer"
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                           style={{ 
-                            color: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.5)',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                            position: 'relative',
+                            zIndex: 30,
+                            color: isDarkTheme ? '#fff' : '#2d3748',
+                            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(109, 66, 182, 0.5)',
+                            backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(109, 66, 182, 0.1)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.25)' : 'rgba(109, 66, 182, 0.25)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.8)' : 'rgba(109, 66, 182, 0.8)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(109, 66, 182, 0.1)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(109, 66, 182, 0.5)'
                           }}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 576 512">
@@ -468,9 +616,19 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                           onClick={() => startEditing(bookmark)}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                           style={{ 
-                            color: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.5)',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                            position: 'relative',
+                            zIndex: 30,
+                            color: isDarkTheme ? '#fff' : '#2d3748',
+                            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(59, 130, 246, 0.5)',
+                            backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(59, 130, 246, 0.1)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.3)'
+                            e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.8)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(59, 130, 246, 0.1)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(59, 130, 246, 0.5)'
                           }}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 512 512">
@@ -481,16 +639,24 @@ export default function ClientDashboard({ userName }: { userName: string }) {
                         <button
                           onClick={async () => {
                             const supabase = createClient()
-                            const { error } = await supabase.from('bookmarks').delete().eq('id', bookmark.id)
-                            if (!error) {
-                              handleBookmarkDeleted(bookmark.id)
-                            }
+                            await supabase.from('bookmarks').delete().eq('id', bookmark.id)
+                            // Realtime subscription will handle the UI update
                           }}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border-2 transition text-sm font-medium"
                           style={{ 
-                            color: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.5)',
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                            position: 'relative',
+                            zIndex: 30,
+                            color: isDarkTheme ? '#fff' : '#2d3748',
+                            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+                            backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'
+                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.8)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+                            e.currentTarget.style.borderColor = isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(239, 68, 68, 0.5)'
                           }}
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 448 512">
