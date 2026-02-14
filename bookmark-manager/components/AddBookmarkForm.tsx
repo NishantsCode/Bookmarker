@@ -10,11 +10,22 @@ export default function AddBookmarkForm({ onBookmarkAdded, isDarkTheme = true }:
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
-    // If user tries to delete https://, keep it
-    if (value.length > 0 && !value.startsWith('https://')) {
-      setUrl('https://' + value.replace(/^https?:\/\//, ''))
-    } else {
+    
+    // If user pastes or types a URL that already has http:// or https://, use it as is
+    if (value.startsWith('http://') || value.startsWith('https://')) {
       setUrl(value)
+    } 
+    // If user clears the field completely, allow it
+    else if (value === '') {
+      setUrl('')
+    }
+    // If user is typing after https://, keep it
+    else if (url.startsWith('https://') && value.length > 0) {
+      setUrl(value)
+    }
+    // Otherwise, add https:// prefix
+    else if (value.length > 0) {
+      setUrl('https://' + value)
     }
   }
 
@@ -22,6 +33,13 @@ export default function AddBookmarkForm({ onBookmarkAdded, isDarkTheme = true }:
     // When user clicks/focuses, prefill with https:// if empty
     if (url === '') {
       setUrl('https://')
+    }
+  }
+
+  const handleUrlBlur = () => {
+    // If user leaves the field with only "https://", clear it
+    if (url === 'https://') {
+      setUrl('')
     }
   }
 
@@ -93,6 +111,7 @@ export default function AddBookmarkForm({ onBookmarkAdded, isDarkTheme = true }:
           value={url}
           onChange={handleUrlChange}
           onFocus={handleUrlFocus}
+          onBlur={handleUrlBlur}
           placeholder="https://google.com"
           className="w-full px-3 py-2 rounded border focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-300 transition"
           style={{ 

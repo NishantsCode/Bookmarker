@@ -42,7 +42,7 @@ next-env.d.ts
 
 # markdown files
 *.md
-README.md
+!README.md
 SETUP.md
 
 # IDE
@@ -55,5 +55,3 @@ SETUP.md
 # OS
 .DS_Store
 Thumbs.db
-
-DATABASE_SETUP.sql
