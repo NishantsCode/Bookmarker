@@ -8,9 +8,26 @@ export default function AddBookmarkForm({ onBookmarkAdded, isDarkTheme = true }:
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // If user tries to delete https://, keep it
+    if (value.length > 0 && !value.startsWith('https://')) {
+      setUrl('https://' + value.replace(/^https?:\/\//, ''))
+    } else {
+      setUrl(value)
+    }
+  }
+
+  const handleUrlFocus = () => {
+    // When user clicks/focuses, prefill with https:// if empty
+    if (url === '') {
+      setUrl('https://')
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!title.trim() || !url.trim()) return
+    if (!title.trim() || !url.trim() || url === 'https://') return
 
     setLoading(true)
     const supabase = createClient()
@@ -74,8 +91,9 @@ export default function AddBookmarkForm({ onBookmarkAdded, isDarkTheme = true }:
           id="bookmark-url"
           type="url"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Website URL"
+          onChange={handleUrlChange}
+          onFocus={handleUrlFocus}
+          placeholder="https://google.com"
           className="w-full px-3 py-2 rounded border focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-300 transition"
           style={{ 
             position: 'relative', 
