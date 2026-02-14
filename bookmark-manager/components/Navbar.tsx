@@ -23,16 +23,16 @@ export default function Navbar({ userName }: { userName: string }) {
 
   return (
     <nav 
-      className="w-full py-4 px-6"
+      className="w-full py-3 px-3 sm:py-4 sm:px-6"
       style={{
         backgroundColor: 'transparent'
       }}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
         {/* Logo/Brand */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink">
           <svg 
-            className="w-8 h-8" 
+            className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" 
             fill="currentColor" 
             viewBox="0 0 20 20"
             style={{ color: isDarkTheme ? '#fff' : '#2d3748' }}
@@ -40,7 +40,7 @@ export default function Navbar({ userName }: { userName: string }) {
             <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
           </svg>
           <span 
-            className="font-bold text-xl" 
+            className="font-bold text-base sm:text-xl truncate" 
             style={{ 
               letterSpacing: '0.125rem',
               color: isDarkTheme ? '#fff' : '#2d3748'
@@ -51,7 +51,7 @@ export default function Navbar({ userName }: { userName: string }) {
         </div>
 
         {/* User Info, Theme Toggle & Logout */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           <div 
             className="hidden sm:flex items-center gap-2"
             style={{ color: isDarkTheme ? '#fff' : '#2d3748' }}

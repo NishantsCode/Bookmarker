@@ -32,7 +32,7 @@ export default function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="font-medium py-2 px-4 rounded-lg transition duration-200 border-2 text-sm"
+      className="font-medium py-1.5 px-3 sm:py-2 sm:px-4 rounded-lg transition duration-200 border-2 text-xs sm:text-sm whitespace-nowrap"
       style={{ 
         letterSpacing: '0.05rem',
         color: isDarkTheme ? '#fff' : '#2d3748',
